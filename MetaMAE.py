@@ -142,7 +142,7 @@ class MaeBirds(LightningModule):
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
         self.batch_size = kwargs.get('batch_size', 16)
-        self.num_workers = kwargs.get('num_workers', 16)
+        self.num_workers = kwargs.get('num_workers', 15)
         self.lr = kwargs.get('lr', 0.02)
         self.loss = MSE()
         self.loc_loss = nn.CrossEntropyLoss()
@@ -152,6 +152,7 @@ class MaeBirds(LightningModule):
 
     def shared_step(self, batch, batch_idx):
         x, gt_loc = batch[0], batch[1]
+        #import code; code.interact(local=locals());
         pred, pm, gt, viz, loc = self(x)
         loss = self.loss(pm, gt) + 0.1*self.loc_loss(loc, gt_loc)
         return loss, viz, pred, x
@@ -222,9 +223,9 @@ class MaeBirds(LightningModule):
 class Birds(Dataset):
     def __init__(self, dataset, label):
         self.dataset = dataset
-        self.images = self.dataset['images']
-        self.idx = np.array(label.iloc[:, 0])
-        self.labels = np.array(label.iloc[:, 1])
+        self.images = np.array(self.dataset['images'])
+        self.idx = np.array(label.iloc[:, 1]).astype(int)
+        self.labels = np.array(label.iloc[:, 2])
         self.images = self.images[self.idx]
         self.transform = transforms.Compose([
             transforms.Resize((256, 256)),
