@@ -40,7 +40,7 @@ class MAE(nn.Module):
         num_patches, encoder_dim = encoder.pos_embedding.shape[-2:]
         self.to_patch_ground, self.patch_to_emb_ground = encoder.to_patch_embedding[:2]
         self.to_patch_overhead, self.patch_to_emb_overhead = copy.deepcopy(self.to_patch_ground), copy.deepcopy(self.patch_to_emb_ground)
-        pixel_values_per_patch = self.patch_to_emb.weight.shape[-1]
+        pixel_values_per_patch = self.patch_to_emb_ground.weight.shape[-1]
         self.iim_token = nn.Parameter(torch.randn(1, encoder_dim))
         self.enc_embed = nn.Parameter(torch.randn(2*num_patches-1, encoder_dim))
         self.match = nn.Linear(encoder_dim, 1)
@@ -78,7 +78,7 @@ class MAE(nn.Module):
         tokens_overhead_ex = torch.cat((tokens_overhead, torch.roll(tokens_overhead, 1, 0)), dim=0)
         iim_token = repeat(self.iim_token, 'n d -> b n d', b = 2*batch)
         tokens_matching = torch.cat((iim_token, tokens_ground_ex, tokens_overhead_ex), dim=1)
-        tokens_matching = tokens + self.enc_embed
+        tokens_matching = tokens_matching + self.enc_embed
 
         enc_tokens_matching = self.encoder.transformer(tokens_matching)
         matching_probs = self.match(enc_tokens_matching[:, 0, :])
@@ -125,9 +125,9 @@ class MAE(nn.Module):
         masked_pixel_preds = pred_pixel_values_all[batch_range, masked_indices]
 
         loss_recon = F.mse_loss(masked_pixel_preds, masked_patches)
-        matching_labels = torch.cat(torch.ones(batch), torch.zeros(batch), device=device)
-        loss_matching = F.cross_entropy(matching_probs, matching_labels)
-        return 
+        matching_labels = torch.cat((torch.ones(batch, device=device), torch.zeros(batch, device=device)))
+        loss_matching = F.binary_cross_entropy_with_logits(matching_probs.squeeze(-1), matching_labels)
+        return loss_recon, loss_matching
 
 class MaeBirds(LightningModule):
     def __init__(self, train_dataset, val_dataset, **kwargs):
@@ -150,79 +150,33 @@ class MaeBirds(LightningModule):
         )
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
-        self.batch_size = kwargs.get('batch_size', 32)
-        self.num_workers = kwargs.get('num_workers', 32)
+        self.batch_size = kwargs.get('batch_size', 16)
+        self.num_workers = kwargs.get('num_workers', 16)
         self.lr = kwargs.get('lr', 0.02)
-        self.loss = MSE()
-        self.loc_loss = nn.CrossEntropyLoss()
-        self.acc = Accuracy(task='multiclass', num_classes=6)
 
-    def forward(self, x, date):
-        return self.model(x, date)
+    def forward(self, img_ground, img_overhead):
+        return self.model(img_ground, img_overhead)
 
     def shared_step(self, batch, batch_idx):
-        x, gt_loc, date = batch[0], batch[1], batch[2].float()
+        img_ground, img_overhead = batch[0], batch[1]
         #import code; code.interact(local=locals());
-        pred, pm, gt, viz, loc = self(x, date)
-        geo_loss = self.loc_loss(loc, gt_loc) 
-        loss = self.loss(pm, gt) + 0.1*geo_loss
-        #loss = geo_loss
-        acc = self.acc(loc, gt_loc)
-        return loss, viz, pred, x, geo_loss, acc
+        loss_matching, loss_recon  = self(img_ground, img_overhead)
+        loss = loss_matching + 0.3*loss_recon
+        return loss, loss_matching, loss_recon
 
     def training_step(self, batch, batch_idx):
-        loss, viz, pred, gt, geo_loss, acc = self.shared_step(batch, batch_idx)
-        return {"loss": loss, "geo_loss": geo_loss, "acc":acc}
+        loss, loss_matching, loss_recon = self.shared_step(batch, batch_idx)
+        self.log('train_loss_recon', loss_recon, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
+        self.log('train_loss', loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        self.log('train_loss_matching', loss_matching, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        return {"loss": loss, "loss_matching": loss_matching, "loss_recon":loss_recon}
 
     def validation_step(self, batch, batch_idx):
-        loss, viz, pred, gt, geo_loss, acc = self.shared_step(batch, batch_idx)
-        return {"loss": loss, "pred": pred, "gt":gt, "viz":viz, "geo_loss":geo_loss, "acc": acc}
-
-    def training_step_end(self, outputs):
-        loss = outputs['loss'].mean()
-        geo_loss = outputs['geo_loss'].mean()
-        acc = outputs['acc'].mean()
-        return {"loss": loss, 'geo_loss':geo_loss, 'acc':acc}
-
-    def validation_step_end(self, outputs):
-        loss = outputs['loss'].mean()
-        geo_loss = outputs['geo_loss'].mean()
-        pred = outputs['pred']
-        gt_masked = outputs['viz']
-        gt = outputs['gt']
-        acc = outputs['acc'].mean()
-        return {"loss": loss, "pred": pred, "gt":gt, "gt_masked":gt_masked, "geo_loss":geo_loss, 'acc':acc}
-
-    def training_epoch_end(self, outputs):
-        loss = torch.stack([x['loss'] for x in outputs]).mean()
-        geo_loss = torch.stack([x['geo_loss'] for x in outputs]).mean()
-        acc = torch.stack([x['acc'] for x in outputs]).mean()
-        self.log('train_geo_loss', geo_loss, prog_bar=True, sync_dist=True)
-        self.log('train_loss', loss, prog_bar=True, sync_dist=True)
-        self.log('train_geo_acc', acc, prog_bar=True, sync_dist=True)
-
-    def validation_epoch_end(self, outputs):
-        loss = torch.stack([x['loss'] for x in outputs]).mean()
-        geo_loss = torch.stack([x['geo_loss'] for x in outputs]).mean()
-        acc = torch.stack([x['acc'] for x in outputs]).mean()
-        if self.current_epoch%50==0:
-            ind = np.random.randint(0, len(outputs), size=5)
-            for k in ind:
-                pred = rearrange(outputs[k]['pred'][0], '(h w) (p1 p2 c) -> (h p1) (w p2) c', p1=16, p2=16, h=14)
-                gt = rearrange(outputs[k]['gt'][0], 'c h w -> h w c')
-                gtm = rearrange(outputs[k]['gt_masked'][0], '(h w) (p1 p2 c) -> (h p1) (w p2) c', p1=16, p2=16, h=14)
-                pred = pred.cpu().detach().numpy()
-                gt = gt.cpu().detach().numpy()
-                gtm = gtm.cpu().detach().numpy()
-                gtm = (gtm*255).astype(np.uint8)
-                pred = (pred*255).astype(np.uint8)
-                gt = (gt*255).astype(np.uint8)
-                self.logger.experiment.log({
-            "samples": [wandb.Image(img) for img in [gt, gtm, pred]]})
-
-        self.log('val_loss', loss, prog_bar=True, sync_dist=True)
-        self.log('val_geo_loss', geo_loss, prog_bar=True, sync_dist=True)
-        self.log('val_geo_acc', acc, prog_bar=True, sync_dist=True)
+        loss, loss_matching, loss_recon = self.shared_step(batch, batch_idx)
+        self.log('val_loss_recon', loss_recon, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        self.log('val_loss', loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        self.log('val_loss_matching', loss_matching, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        return {"loss": loss, "loss_matching": loss_matching, "loss_recon":loss_recon}
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset,
@@ -241,7 +195,7 @@ class MaeBirds(LightningModule):
                         pin_memory=True)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-4, weight_decay=0.05)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-4, weight_decay=0.01)
         scheduler = CosineAnnealingWarmRestarts(optimizer, 40)
         return [optimizer], [scheduler]
 
@@ -250,65 +204,69 @@ class Birds(Dataset):
         self.dataset = dataset
         self.images = np.array(self.dataset['images'])
         self.idx = np.array(label.iloc[:, 1]).astype(int)
-        self.labels = np.array(label.iloc[:, 2])
         self.images = self.images[self.idx]
+        self.val = val
         if not val:
-            self.transform = transforms.Compose([
+            self.transform_ground = transforms.Compose([
                 transforms.Resize((256, 256)),
                 transforms.CenterCrop((224, 224)),
-                transforms.RandomHorizontalFlip(0.5),
-                transforms.RandomVerticalFlip(0.5),
-                transforms.ColorJitter(),
+                transforms.ToTensor()
+            ])
+            self.transform_overhead = transforms.Compose([
+                transforms.RandomCrop(224),
                 transforms.ToTensor()
             ])
         else:
-            self.transform = transforms.Compose([
+            self.transform_ground = transforms.Compose([
                 transforms.Resize((256, 256)),
                 transforms.CenterCrop((224, 224)),
                 transforms.ToTensor()
             ])
+            self.transform_overhead = transforms.Compose([
+                transforms.RandomCrop(224),
+                transforms.ToTensor()
+            ])
+        
 
     def __len__(self):
         return len(self.images)
 
     def __getitem__(self, idx):
         img_path = self.images[idx]['file_name']
-        img = Image.open(img_path)
-        img = self.transform(img)
-        date = self.images[idx]['date'].split(" ")[0]
-        year = int(datetime.strptime(date, '%Y-%m-%d').date().strftime('%Y'))
-        month = int(datetime.strptime(date, '%Y-%m-%d').date().strftime('%m'))
-        day = int(datetime.strptime(date, '%Y-%m-%d').date().strftime('%d'))
-        date_encode = torch.tensor([np.sin(2*np.pi*year/2023), np.cos(2*np.pi*year/2023), np.sin(2*np.pi*month/12), np.cos(2*np.pi*month/12), np.sin(2*np.pi*day/31), np.cos(2*np.pi*day/31)])
-        return img, self.labels[idx], date_encode
+        img_ground = Image.open(img_path)
+        img_ground = self.transform_ground(img_ground)
+        if not self.val:
+            img_overhead = Image.open(f"./train_overhead/images_sentinel/{idx}.jpeg")
+        else:
+            img_overhead = Image.open(f"./val_overhead/images_sentinel/{idx}.jpeg")
+        img_overhead = self.transform_overhead(img_overhead)
+        return img_ground, img_overhead
 
 if __name__=='__main__':
-    f = open("eur_train.txt", "w")
-    with redirect_stderr(f), redirect_stdout(f):
-        torch.cuda.empty_cache()
-        logger = WandbLogger(project="Meta-MAE", name="full train")
-        train_dataset = json.load(open("train_birds.json"))
-        train_labels = pd.read_csv('train_birds_labels_small.csv')
-        train_dataset = Birds(train_dataset, train_labels)
-        val_dataset = json.load(open("val_birds.json"))
-        val_labels = pd.read_csv('val_birds_labels_small.csv')
-        val_dataset = Birds(val_dataset, val_labels, val=True)
+    torch.cuda.empty_cache()
+    logger = WandbLogger(project="Meta-MAE", name="Cross View")
+    train_dataset = json.load(open("train_birds.json"))
+    train_labels = pd.read_csv('train_birds_labels.csv')
+    train_dataset = Birds(train_dataset, train_labels)
+    val_dataset = json.load(open("val_birds.json"))
+    val_labels = pd.read_csv('val_birds_labels.csv')
+    val_dataset = Birds(val_dataset, val_labels, val=True)
 
-        checkpoint = ModelCheckpoint(
-            monitor='val_loss',
-            dirpath='checkpoints',
-            filename='Try-{epoch:02d}-{val_loss:.2f}',
-            mode='min'
-        )
+    checkpoint = ModelCheckpoint(
+        monitor='val_loss',
+        dirpath='checkpoints',
+        filename='CrossMAE-{epoch:02d}-{val_loss:.2f}',
+        mode='min'
+    )
 
-        model = MaeBirds(train_dataset, val_dataset)
-       
-        trainer = pl.Trainer(
-            accelerator='gpu',
-            devices=4,
-            strategy='ddp',
-            max_epochs=1500,
-            num_nodes=1,
-            callbacks=[checkpoint],
-            logger=logger)
-        trainer.fit(model)
+    model = MaeBirds(train_dataset, val_dataset)
+    
+    trainer = pl.Trainer(
+        accelerator='gpu',
+        devices=4,
+        strategy='ddp_find_unused_parameters_true',
+        max_epochs=1500,
+        num_nodes=1,
+        callbacks=[checkpoint],
+        logger=logger)
+    trainer.fit(model)
