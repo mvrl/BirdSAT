@@ -52,11 +52,12 @@ class MAE(nn.Module):
         # decoder parameters
         self.decoder_dim = decoder_dim
         self.enc_to_dec = nn.Linear(encoder_dim, decoder_dim) if encoder_dim != decoder_dim else nn.Identity()
+        self.dec_to_feat = nn.Linear(decoder_dim, encoder_dim)
         self.mask_token = nn.Parameter(torch.randn(decoder_dim))
         self.decoder_ground = Transformer(dim = decoder_dim, depth = decoder_depth, heads = decoder_heads, dim_head = decoder_dim_head, mlp_dim = decoder_dim * 4)
-        self.decoder_features = copy.deepcopy(self.decoder_ground)
+        self.decoder_features = Transformer(dim = encoder_dim, depth = 4, heads = decoder_heads, dim_head = decoder_dim_head, mlp_dim = decoder_dim * 4)
         #self.decoder_pos_emb = nn.Embedding(num_patches, decoder_dim)
-        self.decoder_pos_emb_ground = nn.Parameter(torch.randn(num_patches, decoder_dim))
+        self.decoder_pos_emb_ground = nn.Parameter(torch.randn(num_patches-1, decoder_dim))
         self.to_pixels_ground = nn.Linear(decoder_dim, pixel_values_per_patch)
         self.out = nn.Sigmoid()
 
@@ -102,7 +103,7 @@ class MAE(nn.Module):
         decoder_tokens_all[batch_range, unmasked_indices] = decoder_tokens[:, 1:]
         decoder_tokens_all[batch_range, masked_indices] = mask_tokens
 
-        decoded_tokens = self.decoder_ground(decoder_tokens_all + self.decoder_pos_emb_ground[1:])
+        decoded_tokens = self.decoder_ground(decoder_tokens_all + self.decoder_pos_emb_ground)
 
         masked_patches = patches_ground[batch_range, masked_indices]
 
@@ -114,14 +115,15 @@ class MAE(nn.Module):
 
         decoder_tokens_all = torch.cat((decoder_tokens[:, 0:1], decoder_tokens_all), dim=1)
 
-        decoded_features = self.decoder_features(decoder_tokens_all + self.decoder_pos_emb_ground)
+        decoded_features = self.decoder_features(self.dec_to_feat(decoder_tokens_all) +  self.enc_embed)
 
         norm_ground_features = F.normalize(decoded_features[:, 0], dim=-1)
         norm_overhead_features = F.normalize(encoded_overhead[:, 0], dim=-1)
         similarity = torch.einsum('ij,kj->ik', norm_ground_features, norm_overhead_features)
+        #similarity = torch.matmul(norm_ground_features, norm_overhead_features.T)
 
-        labels_clip = torch.eye(batch)
-        loss_clip = (F.binary_cross_entropy(similarity, labels_clip) + F.binary_cross_entropy(similarity.T, labels_clip)) / 2
+        labels_clip = torch.eye(batch, device=device)
+        loss_clip = (F.binary_cross_entropy_with_logits(similarity, labels_clip) + F.binary_cross_entropy_with_logits(similarity.T, labels_clip)) / 2
         return loss_clip, loss_recon
 
 class MaeBirds(LightningModule):
@@ -145,7 +147,7 @@ class MaeBirds(LightningModule):
         )
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
-        self.batch_size = kwargs.get('batch_size', 32)
+        self.batch_size = kwargs.get('batch_size', 64)
         self.num_workers = kwargs.get('num_workers', 16)
         self.lr = kwargs.get('lr', 0.02)
 
@@ -155,7 +157,7 @@ class MaeBirds(LightningModule):
     def shared_step(self, batch, batch_idx):
         img_ground, img_overhead = batch[0], batch[1]
         #import code; code.interact(local=locals());
-        loss_clip, loss_recon  = self(img_ground, img_overhead, geoloc)
+        loss_clip, loss_recon  = self(img_ground, img_overhead)
         loss = 0.3*loss_clip + loss_recon
         return loss, loss_clip, loss_recon
 
