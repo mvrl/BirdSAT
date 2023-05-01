@@ -122,8 +122,8 @@ class MAE(nn.Module):
         similarity = torch.einsum('ij,kj->ik', norm_ground_features, norm_overhead_features)
         #similarity = torch.matmul(norm_ground_features, norm_overhead_features.T)
 
-        labels_clip = torch.eye(batch, device=device)
-        loss_clip = (F.binary_cross_entropy_with_logits(similarity, labels_clip) + F.binary_cross_entropy_with_logits(similarity.T, labels_clip)) / 2
+        labels_clip = torch.arange(batch, device=device).long()
+        loss_clip = (F.cross_entropy(similarity, labels_clip) + F.cross_entropy(similarity.T, labels_clip)) / 2
         return loss_clip, loss_recon
 
 class MaeBirds(LightningModule):
