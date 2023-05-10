@@ -1,0 +1,9 @@
+einops
+scikit-learn
+scikit-image
+torch
+pytorch_lightning
+torchvision
+pandas
+numpy
+wandb
