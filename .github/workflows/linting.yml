@@ -1,7 +1,8 @@
 name: Python Lint
 on: [push]
 jobs:
-	runs-on: ubuntu-latest
-	steps:
-		- uses: actions/checkout@v1
-		- uses: ricardochaves/python-lint@v1.3.0
+    lint:
+        runs-on: ubuntu-latest
+        steps:
+        - uses: actions/checkout@v1
+        - uses: ricardochaves/python-lint@v1.4.0
