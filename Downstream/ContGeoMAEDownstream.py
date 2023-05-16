@@ -22,7 +22,10 @@ from datetime import datetime
 import copy
 import os
 from functools import partial
-
+from timm.data import Mixup
+from timm.data import create_transform
+from timm.loss import SoftTargetCrossEntropy
+from timm.utils import accuracy
 
 class MaeBirds(LightningModule):
     def __init__(self, train_dataset, val_dataset, **kwargs):
@@ -54,22 +57,29 @@ class MaeBirdsDownstream(LightningModule):
         self.model = MaeBirds.load_from_checkpoint('/storage1/fs1/jacobsn/Active/user_s.sastry/Remote-Sensing-RVSA/ContrastiveGeoDateMAEv5-epoch=28-val_loss=1.53.ckpt', train_dataset=train_dataset, val_dataset=val_dataset)
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
-        self.batch_size = kwargs.get('batch_size', 32)
-        self.num_workers = kwargs.get('num_workers', 16)
+        self.batch_size = kwargs.get('batch_size', 64)
+        self.num_workers = kwargs.get('num_workers', 8)
         self.lr = kwargs.get('lr', 0.02)
         self.classify = nn.Linear(768, 1486)
-        self.criterion = nn.CrossEntropyLoss()
-        self.acc = Accuracy(task='multiclass', num_classes=1486)
+        self.criterion = SoftTargetCrossEntropy()
+        #self.acc = Accuracy(task='multiclass', num_classes=1486)
+        self.mixup_fn = Mixup(
+            mixup_alpha=0.8, cutmix_alpha=1.0, cutmix_minmax=None,
+            prob=1.0, switch_prob=0.5, mode='batch',
+            label_smoothing=0.1, num_classes=1486)
 
     def forward(self, img_ground, geoloc, date):
         return self.classify(self.model(img_ground, geoloc, date))
 
     def shared_step(self, batch, batch_idx):
         img_ground, geoloc, date, labels = batch[0], batch[1], batch[2], batch[3]
+        img_ground, labels_mix = self.mixup_fn(img_ground, labels)
         #import code; code.interact(local=locals());
         preds = self(img_ground, geoloc, date)
-        loss = self.criterion(preds, labels)
-        acc = self.acc(preds, labels)
+        #import code; code.interact(local=locals());
+        loss = self.criterion(preds, labels_mix)
+        #acc = self.acc(preds, labels)
+        acc = sum(accuracy(preds, labels)) / preds.shape[0]
         return loss, acc
 
     def training_step(self, batch, batch_idx):
@@ -101,9 +111,9 @@ class MaeBirdsDownstream(LightningModule):
                         pin_memory=True)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-4, weight_decay=0.01)
-        #scheduler = CosineAnnealingWarmRestarts(optimizer, 40)
-        return optimizer
+        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-4, weight_decay=0.001)
+        scheduler = CosineAnnealingWarmRestarts(optimizer, 40)
+        return [optimizer], [scheduler]
 
 class Birds(Dataset):
     def __init__(self, dataset, label, val=False):
@@ -119,17 +129,28 @@ class Birds(Dataset):
         self.categories = self.categories[self.idx]
         self.val = val
         if not val:
-            self.transform_ground = transforms.Compose([
-                transforms.Resize((384, 384)),
-                transforms.TrivialAugmentWide(),
-                transforms.RandomHorizontalFlip(0.5),
-                transforms.RandomVerticalFlip(0.5),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ])
+            self.transform_ground = create_transform(
+            input_size=384,
+            is_training=True,
+            color_jitter=0.4,
+            auto_augment='rand-m9-mstd0.5-inc1',
+            re_prob=0.25,
+            re_mode='pixel',
+            re_count=1,
+            interpolation='bicubic',
+        )
+            # self.transform_ground = transforms.Compose([
+            #     transforms.Resize((384, 384)),
+            #     transforms.AutoAugment(),
+            #     transforms.AugMix(5, 5),
+            #     transforms.RandomHorizontalFlip(0.5),
+            #     transforms.RandomVerticalFlip(0.5),
+            #     transforms.ToTensor(),
+            #     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            # ])
         else:
             self.transform_ground = transforms.Compose([
-                transforms.Resize((384, 384)),
+                transforms.Resize((384, 384), interpolation=transforms.InterpolationMode.BICUBIC),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ])
@@ -149,12 +170,12 @@ class Birds(Dataset):
         month = int(datetime.strptime(date, '%Y-%m-%d').date().strftime('%m'))
         day = int(datetime.strptime(date, '%Y-%m-%d').date().strftime('%d'))
         date_encode = torch.tensor([np.sin(2*np.pi*month/12), np.cos(2*np.pi*month/12), np.sin(2*np.pi*day/31), np.cos(2*np.pi*day/31)])
-        label = self.species[self.categories[idx]['category_id']]
         return img_ground, torch.tensor([np.sin(np.pi*lat/90), np.cos(np.pi*lat/90), np.sin(np.pi*lon/180), np.cos(np.pi*lon/180)]).float(), date_encode.float(), torch.tensor(label)
 
 if __name__=='__main__':
     f = open("log.txt", "w")
-    with redirect_stdout(f), redirect_stderr(f):
+    #with redirect_stdout(f), redirect_stderr(f):
+    if True:
         torch.cuda.empty_cache()
         logger = WandbLogger(project="Cross-View-MAE", name="Downstram Cont MAE")
         train_dataset = json.load(open("/storage1/fs1/jacobsn/Active/user_s.sastry/metaformer/train_birds.json"))
@@ -167,12 +188,13 @@ if __name__=='__main__':
         checkpoint = ModelCheckpoint(
             monitor='val_loss',
             dirpath='checkpoints',
-            filename='ContrastiveDownstreamGeoMAEv5-{epoch:02d}-{val_loss:.2f}',
+            filename='ContrastiveDownstreamGeoMAEv7-{epoch:02d}-{val_loss:.2f}',
             mode='min'
         )
 
     
         model = MaeBirdsDownstream(train_dataset, val_dataset)
+        #model = model.load_from_checkpoint("/storage1/fs1/jacobsn/Active/user_s.sastry/checkpoints/ContrastiveDownstreamGeoMAEv7-epoch=94-val_loss=2.77.ckpt", train_dataset=train_dataset, val_dataset=val_dataset)
         trainer = pl.Trainer(
             accelerator='gpu',
             devices=4,
@@ -180,5 +202,6 @@ if __name__=='__main__':
             max_epochs=1500,
             num_nodes=1,
             callbacks=[checkpoint],
-            logger=logger)
+            logger=logger
+            )
         trainer.fit(model)
