@@ -4,13 +4,13 @@
 This cross-view birds species dataset consists
 of paired ground-level bird images and satellite images, along with meta-information associated with the iNaturalist-2021 dataset.
 
-![CiNAT-Birds-2021](imgs/data5%20(2).png)
+![CiNAT-Birds-2021](imgs/data.png)
 
 #### Computer Vision Tasks
 1. Fine-Grained image classification
 2. Satellite-to-bird image retrieval
 3. Bird-to-satellite image retrieval
-4. Geolocalization of Bird Images
+4. Geolocalization of Bird Species
 
 An example of task 3 is shown below:
 
@@ -32,9 +32,6 @@ There are two options to setup your environment to be able to run all the functi
     ```
 
 Additionally, we have hosted a pre-built docker image on docker hub with tag `srikumar26/birdsat:latest` for use.
-
-#### Data Preparation
-Please refer to `./data/README.md` on instructions for downloading and preparing data.
 
 ## 🔥 Training Models
 1. Setup all the parameters of interest inside `config.py` before launching the training script.
