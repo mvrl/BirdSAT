@@ -17,6 +17,18 @@ An example of task 3 is shown below:
 
 ## 👨‍💻 Getting Started 
 
+#### Setting up 
+1. Clone this repository:
+```bash
+git clone https://github.com/mvrl/BirdSAT.git
+```
+2. Clone the Remote-Sensing-RVSA repository inside BirdSAT
+```bash
+cd BirdSAT
+git clone https://github.com/ViTAE-Transformer/Remote-Sensing-RVSA.git
+```
+3. **Append** the code for CVMMAE present in `utils_model/CVMMAE.py` to the file present in `Remote-Sensing-RVSA/MAEPretrain_SceneClassification/models_mae_vitae.py`
+
 #### Installing Required Packages
 There are two options to setup your environment to be able to run all the functions in the repository:
 1. Using Dockerfile provided in the repository to create a docker image with all required packages:
@@ -29,7 +41,6 @@ There are two options to setup your environment to be able to run all the functi
     conda activate birdsat && \
     pip install requirements.txt
     ```
-
 Additionally, we have hosted a pre-built docker image on docker hub with tag `srikumar26/birdsat:latest` for use.
 
 ## 🔥 Training Models
