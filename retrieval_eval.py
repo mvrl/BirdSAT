@@ -59,27 +59,27 @@ def retrieval_eval():
     )
 
     recall = 0
-    
+
     for batch in tqdm(test_loader):
-        if cfg.retrieval.mode=="full_metadata":
+        if cfg.retrieval.mode == "full_metadata":
             _, img_overhead, label, *_ = batch
-        else:    
+        else:
             _, img_overhead, label = batch
         z = 0
         running_val = 0
         running_label = 0
         for batch2 in tqdm(test_loader):
-            if cfg.retrieval.mode=="full_metadata":
+            if cfg.retrieval.mode == "full_metadata":
                 img_ground, _, label2, geoloc, date = batch2
                 ground_embeddings, overhead_embeddings = model.forward_features(
-                img_ground.cuda(), img_overhead.cuda(), geoloc.cuda(), date.cuda()
-            )
+                    img_ground.cuda(), img_overhead.cuda(), geoloc.cuda(), date.cuda()
+                )
             else:
                 img_ground, _, label2 = batch2
                 ground_embeddings, overhead_embeddings = model.forward_features(
-                img_ground.cuda(), img_overhead.cuda()
-            )
-            
+                    img_ground.cuda(), img_overhead.cuda()
+                )
+
             similarity = torch.einsum(
                 "ij,kj->ik", ground_embeddings, overhead_embeddings
             )
@@ -92,11 +92,11 @@ def retrieval_eval():
                 running_label = torch.cat((running_label, label2), dim=0)
         if cfg.retrieval.model_type == "CVEMAE":
             _, ind = torch.topk(running_val, 10, dim=0)
-        
+
         # Hierarchical Retrieval
         elif cfg.retrieval.model_type == "CVMMAE":
             _, ind = torch.topk(running_val, 50, dim=0)
-            if cfg.retrieval.mode=="full_metadata":
+            if cfg.retrieval.mode == "full_metadata":
                 img_ground, _, label2, geoloc, date = test_dataset[ind]
             else:
                 img_ground, _, label2 = test_dataset[ind]
@@ -105,15 +105,20 @@ def retrieval_eval():
             for i in range(50):
                 img_ground_rolled = torch.roll(img_ground, i, 0)
                 idx_rolled = torch.roll(idx, i, 0)
-                if cfg.retrieval.mode=="full_metadata":
+                if cfg.retrieval.mode == "full_metadata":
                     _, scores = model_filter.forward_features(
-                        img_ground_rolled.cuda(), img_overhead.cuda(), geoloc.cuda(), date.cuda()
+                        img_ground_rolled.cuda(),
+                        img_overhead.cuda(),
+                        geoloc.cuda(),
+                        date.cuda(),
                     )
                 else:
                     _, scores = model_filter.forward_features(
                         img_ground_rolled.cuda(), img_overhead.cuda()
                     )
-                similarity[idx_rolled, torch.arange(50)] = scores.squeeze(0).detach().cpu()
+                similarity[idx_rolled, torch.arange(50)] = (
+                    scores.squeeze(0).detach().cpu()
+                )
             _, ind = torch.topk(similarity, 10, dim=0)
             running_label = label2
 
@@ -122,4 +127,3 @@ def retrieval_eval():
             [1 if label[i] in preds[:, i] else 0 for i in range(label.shape[0])]
         )
         print(f"Current Recall Score: {recall/len(test_dataset)}")
-

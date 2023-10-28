@@ -150,15 +150,21 @@ class CrossViewiNATBirdsFineTune(Dataset):
             )
         else:
             self.transform_ground = transforms.Compose(
-                [transforms.Resize(cfg.pretrain.ground.img_size), transforms.ToTensor(), transforms.Normalize(
-                        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]
+                [
+                    transforms.Resize(cfg.pretrain.ground.img_size),
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                    ),
+                ]
             )
             self.transform_overhead = transforms.Compose(
                 [
                     transforms.Resize(cfg.pretrain.overhead.img_size),
                     transforms.ToTensor(),
                     transforms.Normalize(
-                        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                    ),
                 ]
             )
 
@@ -298,27 +304,27 @@ class HeirarchicalRet(Dataset):
         self.images = self.images[self.idx]
         self.ids = ids
         self.transform_ground = transforms.Compose(
-                [
-                    transforms.Resize(cfg.pretrain.ground.img_size),
-                    transforms.ToTensor(),
-                    transforms.Normalize(
-                        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                    ),
-                ]
-            )
+            [
+                transforms.Resize(cfg.pretrain.ground.img_size),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
         self.transform_overhead = transforms.Compose(
-                [
-                    transforms.Resize(cfg.pretrain.overhead.img_size),
-                    transforms.ToTensor(),
-                    transforms.Normalize(
-                        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                    ),
-                ]
-            )
-    
+            [
+                transforms.Resize(cfg.pretrain.overhead.img_size),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
+
     def __len__(self):
         return len(self.ids)
-    
+
     def __getitem__(self, idx):
         img_path = self.images[self.ids[idx]]["file_name"]
         lat = self.images[self.ids[idx]]["latitude"]
@@ -336,7 +342,9 @@ class HeirarchicalRet(Dataset):
         )
         img_ground = Image.open(os.path.join("data", img_path))
         img_ground = self.transform_ground(img_ground)
-        img_overhead = Image.open(f"data/val_overhead/images_sentinel/{self.ids[idx]}.jpeg")
+        img_overhead = Image.open(
+            f"data/val_overhead/images_sentinel/{self.ids[idx]}.jpeg"
+        )
         img_overhead = self.transform_overhead(img_overhead)
         if cfg.pretrain.train.mode == "no_metadata":
             return img_ground, img_overhead
