@@ -14,6 +14,8 @@ class CrossViewiNATBirds(Dataset):
         self.images = np.array(self.dataset["images"])
         self.idx = np.array(label.iloc[:, 1]).astype(int)
         self.images = self.images[self.idx]
+        if cfg.pretrain.train.model_type == "MOCOGEO":
+            self.geo_labels = np.array(label.iloc[:, 2]).astype(int)
         self.val = val
         if not val:
             self.transform_ground = transforms.Compose(
@@ -88,6 +90,12 @@ class CrossViewiNATBirds(Dataset):
         else:
             img_overhead = Image.open(f"data/val_overhead/images_sentinel/{idx}.jpeg")
         img_overhead = self.transform_overhead(img_overhead)
+        if cfg.pretrain.train.model_type == "MOCOGEO":
+            return (
+                img_ground,
+                img_overhead,
+                torch.tensor(self.geo_labels[idx]).long(),
+            )
         if cfg.pretrain.train.mode == "no_metadata":
             return img_ground, img_overhead
         else:

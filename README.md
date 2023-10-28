@@ -3,6 +3,10 @@
 ## 🦢 Dataset Released: Cross-View iNAT Birds 2021
 This cross-view birds species dataset consists of paired ground-level bird images and satellite images, along with meta-information associated with the iNaturalist-2021 dataset.
 
+Satellite images along with meta-information - [Link](https://wustl.box.com/s/jtt1xbap6xpzvqfbeedq0wxu5ciqqc7a)
+
+iNaturalist Images - [Link](https://github.com/visipedia/inat_comp/tree/master/2021)
+
 ![CiNAT-Birds-2021](imgs/data.png)
 
 #### Computer Vision Tasks
@@ -22,12 +26,16 @@ An example of task 3 is shown below:
 ```bash
 git clone https://github.com/mvrl/BirdSAT.git
 ```
-2. Clone the Remote-Sensing-RVSA repository inside BirdSAT
+2. Clone the Remote-Sensing-RVSA repository inside BirdSAT:
 ```bash
 cd BirdSAT
 git clone https://github.com/ViTAE-Transformer/Remote-Sensing-RVSA.git
 ```
 3. **Append** the code for CVMMAE present in `utils_model/CVMMAE.py` to the file present in `Remote-Sensing-RVSA/MAEPretrain_SceneClassification/models_mae_vitae.py`
+
+4. Download pretrained satellite image encoder from - [Link](https://1drv.ms/u/s!AimBgYV7JjTlgUIde2jzcjrrWasP?e=gyLn29) and place inside folder `pretrained_models`.
+
+5. Download all datasets and place inside folder `data`.
 
 #### Installing Required Packages
 There are two options to setup your environment to be able to run all the functions in the repository:
@@ -59,10 +67,10 @@ Download pretrained models from the given links below:
 
 |Model Type|Download Url|
 |----------|--------|
-|CVE-MAE|[Link]()|
-|CVE-MAE-Meta| [Link]()|
-|CVM-MAE| [Link]()|
-|CVM-MAE-Meta| [Link]()|
+|CVE-MAE|[Link](https://wustl.box.com/s/o1ooaunhaym7v1qj3yzj3vof0lskxyha)|
+|CVE-MAE-Meta| [Link](https://wustl.box.com/s/fudo44eznjwejcp3vql14by20rqqayfy)|
+|CVM-MAE| [Link](https://wustl.box.com/s/xuezslrnjxyz1d1ngtzvnm5ck2il4nx8)|
+|CVM-MAE-Meta| [Link](https://wustl.box.com/s/c3nfbdmcigiogqskemyc4h5soveiya8n)|
 
 
 ## 📑 Citation
