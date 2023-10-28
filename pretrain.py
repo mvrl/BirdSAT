@@ -1,7 +1,7 @@
 import torch
 import pytorch_lightning as pl
 from datasets import CrossViewiNATBirds
-from models import MAE, CVEMAEMeta, CVMMAEMeta
+from models import MAE, CVEMAEMeta, CVMMAEMeta, MoCoGeo
 from torch.utils.data import random_split
 import torch.nn.functional as F
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -36,6 +36,12 @@ def pretrain():
 
     if cfg.pretrain.train.model_type == "MAE":
         model = MAE(train_dataset, val_dataset)
+    elif cfg.pretrain.train.model_type == "MOCOGEO":
+        train_dataset, queue_dataset = random_split(
+            train_dataset,
+            [int(0.9975 * len(train_dataset)), int(0.0025 * len(train_dataset))],
+        )
+        model = MoCoGeo(train_dataset, val_dataset, queue_dataset)
     elif cfg.pretrain.train.model_type == "CVEMAE":
         model = CVEMAEMeta(train_dataset, val_dataset)
     elif cfg.pretrain.train.model_type == "CVMMAE":

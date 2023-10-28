@@ -1,7 +1,7 @@
 import torch
 import pytorch_lightning as pl
 from datasets import CrossViewiNATBirdsFineTune
-from models import MAE, CVEMAEMeta, CVMMAEMeta
+from models import MAE, CVEMAEMeta, CVMMAEMeta, MoCoGeo
 from torch.utils.data import random_split
 import torch.nn.functional as F
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -41,18 +41,29 @@ def finetune():
             train_dataset=train_dataset,
             val_dataset=val_dataset,
         )
+        model.setup_finetune()
+    elif cfg.finetune.train.model_type == "MOCOGEO":
+        model = MoCoGeo.load_from_checkpoint(
+            cfg.finetune.train.ckpt,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            queue_dataset=None,
+        )
+        model.setup_finetune()
     elif cfg.finetune.train.model_type == "CVEMAE":
         model = CVEMAEMeta.load_from_checkpoint(
             cfg.finetune.train.ckpt,
             train_dataset=train_dataset,
             val_dataset=val_dataset,
         )
+        model.setup_finetune()
     elif cfg.finetune.train.model_type == "CVMMAE":
         model = CVMMAEMeta.load_from_checkpoint(
             cfg.finetune.train.ckpt,
             train_dataset=train_dataset,
             val_dataset=val_dataset,
         )
+        model.setup_finetune()
 
     trainer = pl.Trainer(
         accelerator="gpu",

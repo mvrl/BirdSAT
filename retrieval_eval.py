@@ -1,12 +1,6 @@
 import torch
-import pytorch_lightning as pl
-from datasets import CrossViewiNATBirdsFineTune, HeirarchicalRet
-from models import MAE, CVEMAEMeta, CVMMAEMeta
-from torch.utils.data import random_split
-import torch.nn.functional as F
-from pytorch_lightning.callbacks import ModelCheckpoint
-import numpy as np
-from pytorch_lightning.loggers import WandbLogger
+from datasets import CrossViewiNATBirdsFineTune
+from models import CVEMAEMeta, CVMMAEMeta, MoCoGeo
 import json
 import pandas as pd
 from config import cfg
@@ -22,11 +16,12 @@ def retrieval_eval():
     test_labels = pd.read_csv("data/val_birds_labels.csv")
     test_dataset = CrossViewiNATBirdsFineTune(test_json, test_labels, val=True)
 
-    if cfg.retrieval.model_type == "MAE":
-        model = MAE.load_from_checkpoint(
+    if cfg.retrieval.model_type == "MOCOGEO":
+        model = MoCoGeo.load_from_checkpoint(
             cfg.retrieval.ckpt,
             train_dataset=None,
             val_dataset=test_dataset,
+            queue_dataset=None,
         )
     elif cfg.retrieval.model_type == "CVEMAE":
         model = CVEMAEMeta.load_from_checkpoint(
@@ -56,6 +51,7 @@ def retrieval_eval():
         batch_size=cfg.retrieval.batch_size,
         shuffle=False,
         num_workers=cfg.retrieval.num_workers,
+        drop_last=True,
     )
 
     recall = 0
@@ -69,7 +65,10 @@ def retrieval_eval():
         running_val = 0
         running_label = 0
         for batch2 in tqdm(test_loader):
-            if cfg.retrieval.mode == "full_metadata":
+            if (
+                cfg.retrieval.mode == "full_metadata"
+                and cfg.retrieval.model_type != "MOCOGEO"
+            ):
                 img_ground, _, label2, geoloc, date = batch2
                 ground_embeddings, overhead_embeddings = model.forward_features(
                     img_ground.cuda(), img_overhead.cuda(), geoloc.cuda(), date.cuda()
@@ -90,19 +89,25 @@ def retrieval_eval():
             else:
                 running_val = torch.cat((running_val, similarity.detach().cpu()), dim=0)
                 running_label = torch.cat((running_label, label2), dim=0)
-        if cfg.retrieval.model_type == "CVEMAE":
-            _, ind = torch.topk(running_val, 10, dim=0)
+        if (
+            cfg.retrieval.model_type == "CVEMAE"
+            or cfg.retrieval.model_type == "MOCOGEO"
+        ):
+            _, ind = torch.topk(running_val, cfg.retrieval.topk, dim=0)
 
         # Hierarchical Retrieval
         elif cfg.retrieval.model_type == "CVMMAE":
-            _, ind = torch.topk(running_val, 50, dim=0)
+            assert cfg.retrieval.hierarchical_filter > cfg.retrieval.topk
+            _, ind = torch.topk(running_val, cfg.retrieval.hierarchical_filter, dim=0)
             if cfg.retrieval.mode == "full_metadata":
                 img_ground, _, label2, geoloc, date = test_dataset[ind]
             else:
                 img_ground, _, label2 = test_dataset[ind]
-            similarity = torch.zeros((50, 50))
-            idx = torch.arange(50)
-            for i in range(50):
+            similarity = torch.zeros(
+                (cfg.retrieval.hierarchical_filter, cfg.retrieval.hierarchical_filter)
+            )
+            idx = torch.arange(cfg.retrieval.hierarchical_filter)
+            for i in range(cfg.retrieval.hierarchical_filter):
                 img_ground_rolled = torch.roll(img_ground, i, 0)
                 idx_rolled = torch.roll(idx, i, 0)
                 if cfg.retrieval.mode == "full_metadata":
@@ -116,10 +121,10 @@ def retrieval_eval():
                     _, scores = model_filter.forward_features(
                         img_ground_rolled.cuda(), img_overhead.cuda()
                     )
-                similarity[idx_rolled, torch.arange(50)] = (
-                    scores.squeeze(0).detach().cpu()
-                )
-            _, ind = torch.topk(similarity, 10, dim=0)
+                similarity[
+                    idx_rolled, torch.arange(cfg.retrieval.hierarchical_filter)
+                ] = (scores.squeeze(0).detach().cpu())
+            _, ind = torch.topk(similarity, cfg.retrieval.topk, dim=0)
             running_label = label2
 
         preds = running_label[ind]

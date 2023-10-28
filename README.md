@@ -1,8 +1,7 @@
 # BirdSAT: Cross-View Contrastive Masked Autoencoders for Bird Species Classification and Mapping
 
 ## 🦢 Dataset Released: Cross-View iNAT Birds 2021
-This cross-view birds species dataset consists
-of paired ground-level bird images and satellite images, along with meta-information associated with the iNaturalist-2021 dataset.
+This cross-view birds species dataset consists of paired ground-level bird images and satellite images, along with meta-information associated with the iNaturalist-2021 dataset.
 
 ![CiNAT-Birds-2021](imgs/data.png)
 

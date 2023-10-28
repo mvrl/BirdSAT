@@ -38,7 +38,7 @@ cfg.pretrain.train.lr = 1e-4
 cfg.pretrain.train.weight_decay = 1e-2
 cfg.pretrain.train.accumulate_grad_batches = 1
 cfg.pretrain.train.warmup_epochs = 40
-cfg.pretrain.train.model_type = "CVEMAE"  # one of 'CVEMAE', 'CVMMAE', 'MAE'
+cfg.pretrain.train.model_type = "CVEMAE"  # one of 'CVEMAE', 'CVMMAE', 'MAE', 'MOCOGEO'
 cfg.pretrain.train.expt_name = "CVEMAE_v1"
 
 
@@ -70,7 +70,7 @@ cfg.finetune.train.weight_decay = 1e-1
 cfg.finetune.train.accumulate_grad_batches = 1
 cfg.finetune.train.warmup_epochs = 40
 cfg.finetune.train.label_smoothing = 0.05
-cfg.finetune.train.model_type = "CVEMAE"  # one of 'CVEMAE', 'CVMMAE', 'MAE'
+cfg.finetune.train.model_type = "CVEMAE"  # one of 'CVEMAE', 'CVMMAE', 'MAE', 'MOCOGEO'
 cfg.finetune.train.expt_name = "CVEMAE_finetune_v1"
 cfg.finetune.train.dataset = "CUB"  # one of 'iNAT', 'CUB', 'NABirds'
 cfg.finetune.train.linear_probe = False
@@ -79,9 +79,11 @@ cfg.finetune.train.ckpt = "checkpoints/CVEMAE_v1-epoch=99-val_loss=0.00.ckpt"
 
 cfg.retrieval = edict()
 cfg.retrieval.enabled = False
-cfg.retrieval.model_type = "CVEMAE"  # one of 'CVEMAE', 'CVMMAE'
+cfg.retrieval.model_type = "CVEMAE"  # one of 'CVEMAE', 'CVMMAE' 'MOCOGEO'
 cfg.retrieval.mode = "full_metadata"  # one of 'no_metadata', 'full_metadata'
-cfg.retrieval.batch_size = 77
+cfg.retrieval.topk = 10
+cfg.retrieval.hierarchical_filter = 50
+cfg.retrieval.batch_size = cfg.retrieval.hierarchical_filter
 cfg.retrieval.devices = 1
 cfg.retrieval.num_workers = 12
 cfg.retrieval.ckpt = "checkpoints/CVEMAE_v1-epoch=99-val_loss=0.00.ckpt"
