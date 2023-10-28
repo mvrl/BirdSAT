@@ -2,6 +2,7 @@ import torch
 import pytorch_lightning as pl
 from datasets import CrossViewiNATBirds
 from models import MAE, CVEMAEMeta, CVMMAEMeta
+from torch.utils.data import random_split
 import torch.nn.functional as F
 from pytorch_lightning.callbacks import ModelCheckpoint
 import numpy as np
@@ -9,10 +10,12 @@ from pytorch_lightning.loggers import WandbLogger
 import json
 import pandas as pd
 from config import cfg
+from utils import seed_everything
 
 
 def pretrain():
     torch.cuda.empty_cache()
+    seed_everything()
     logger = WandbLogger(project="BirdSAT", name=cfg.pretrain.train.expt_name)
     train_json = json.load(open("data/train_birds.json"))
     train_labels = pd.read_csv("data/train_birds_labels.csv")
@@ -20,6 +23,9 @@ def pretrain():
     val_json = json.load(open("data/val_birds.json"))
     val_labels = pd.read_csv("data/val_birds_labels.csv")
     val_dataset = CrossViewiNATBirds(val_json, val_labels, val=True)
+    val_dataset, _ = random_split(
+        val_dataset, [int(0.2 * len(val_dataset)), int(0.8 * len(val_dataset))]
+    )
 
     checkpoint = ModelCheckpoint(
         monitor="val_loss",

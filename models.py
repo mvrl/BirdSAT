@@ -8,7 +8,9 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from pytorch_lightning import LightningModule
 import torch.nn.functional as F
+from torchvision.transforms import v2
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+from torchmetrics import Accuracy
 from functools import partial
 from config import cfg
 
@@ -16,6 +18,7 @@ from config import cfg
 class MAE(LightningModule):
     def __init__(self, train_dataset, val_dataset, **kwargs):
         super().__init__()
+        assert not (cfg.pretrain.train.enabled and cfg.finetune.train.enabled)
         self.model = MaskedAutoencoderViTAE(
             img_size=cfg.pretrain.ground.img_size,
             patch_size=cfg.pretrain.ground.model.patch_size,
@@ -34,6 +37,25 @@ class MAE(LightningModule):
         )
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
+        if cfg.finetune.train.enabled:
+            if cfg.finetune.train.dataset == "iNAT":
+                self.classify = nn.Linear(cfg.pretrain.ground.model.embed_dim, 1486)
+                self.cutmix = v2.CutMix(num_classes=1486)
+                self.mixup = v2.MixUp(num_classes=1486)
+                self.acc = Accuracy(task="multiclass", num_classes=1486)
+            elif cfg.finetune.train.dataset == "CUB":
+                self.classify = nn.Linear(cfg.pretrain.ground.model.embed_dim, 200)
+                self.cutmix = v2.CutMix(num_classes=200)
+                self.mixup = v2.MixUp(num_classes=200)
+                self.acc = Accuracy(task="multiclass", num_classes=200)
+            elif cfg.finetune.train.dataset == "NABirds":
+                self.classify = nn.Linear(cfg.pretrain.ground.model.embed_dim, 555)
+                self.cutmix = v2.CutMix(num_classes=555)
+                self.mixup = v2.MixUp(num_classes=555)
+                self.acc = Accuracy(task="multiclass", num_classes=555)
+            self.criterion = nn.CrossEntropyLoss(
+                label_smoothing=cfg.finetune.train.label_smoothing
+            )
 
     def forward(self, img_ground):
         loss_recon, *_ = self.model(img_ground)
@@ -43,20 +65,50 @@ class MAE(LightningModule):
         embeddings, *_ = self.model.forward_encoder(img_ground, 0)
         return embeddings
 
-    def shared_step(self, batch, batch_idx):
-        img_ground, img_overhead = batch[0], batch[1]
+    def forward_finetune(self, img_ground, label):
+        img_ground, label = self.mixup(img_ground, label)
+        img_ground, label = self.cutmix(img_ground, label)
+        embeddings, *_ = self.model.forward_encoder(img_ground, 0)
+        out = self.classify(embeddings[:, 0])
+        return out
+
+    def shared_step_pretrain(self, batch, batch_idx):
+        img_ground = batch
         loss_recon = self(img_ground)
         return loss_recon
 
+    def shared_step_finetune(self, batch, batch_idx):
+        img_ground, labels = batch[0], batch[1]
+        preds = self.forward_finetune(img_ground, labels)
+        loss = self.criterion(preds, labels)
+        acc = self.acc(preds, labels)
+        return loss, acc
+
     def training_step(self, batch, batch_idx):
-        loss_recon = self.shared_step(batch, batch_idx)
-        self.log("train_loss", loss_recon, prog_bar=True, on_epoch=True, sync_dist=True)
-        return {"loss": loss_recon}
+        if cfg.pretrain.train.enabled:
+            loss_recon = self.shared_step_pretrain(batch, batch_idx)
+            self.log(
+                "train_loss", loss_recon, prog_bar=True, on_epoch=True, sync_dist=True
+            )
+            return {"loss": loss_recon}
+        else:
+            loss, acc = self.shared_step_finetune(batch, batch_idx)
+            self.log("train_acc", acc, on_epoch=True, prog_bar=True)
+            self.log("train_loss", loss, prog_bar=True, on_epoch=True)
+            return {"loss": loss, "acc": acc}
 
     def validation_step(self, batch, batch_idx):
-        loss_recon = self.shared_step
-        self.log("val_loss", loss_recon, prog_bar=True, on_epoch=True, sync_dist=True)
-        return {"loss": loss_recon}
+        if cfg.pretrain.train.enabled:
+            loss_recon = self.shared_step_pretrain(batch, batch_idx)
+            self.log(
+                "val_loss", loss_recon, prog_bar=True, on_epoch=True, sync_dist=True
+            )
+            return {"loss": loss_recon}
+        else:
+            loss, acc = self.shared_step_finetune(batch, batch_idx)
+            self.log("val_acc", acc, prog_bar=True, on_epoch=True)
+            self.log("val_loss", loss, prog_bar=True, on_epoch=True)
+            return {"loss": loss, "acc": acc}
 
     def train_dataloader(self):
         return DataLoader(
@@ -93,6 +145,7 @@ class MAE(LightningModule):
 class CVEMAEMeta(LightningModule):
     def __init__(self, train_dataset, val_dataset, **kwargs):
         super().__init__()
+        assert not (cfg.pretrain.train.enabled and cfg.finetune.train.enabled)
         self.sat_encoder = mae_vitae_base_patch16_dec512d8b()
         self.sat_encoder.load_state_dict(
             torch.load(
@@ -118,8 +171,28 @@ class CVEMAEMeta(LightningModule):
         )
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
-        self.geo_encode = nn.Linear(4, cfg.pretrain.ground.model.embed_dim)
-        self.date_encode = nn.Linear(4, cfg.pretrain.ground.model.embed_dim)
+        if cfg.finetune.train.enabled:
+            if cfg.finetune.train.dataset == "iNAT":
+                self.classify = nn.Linear(cfg.pretrain.ground.model.embed_dim, 1486)
+                self.cutmix = v2.CutMix(num_classes=1486)
+                self.mixup = v2.MixUp(num_classes=1486)
+                self.acc = Accuracy(task="multiclass", num_classes=1486)
+            elif cfg.finetune.train.dataset == "CUB":
+                self.classify = nn.Linear(cfg.pretrain.ground.model.embed_dim, 200)
+                self.cutmix = v2.CutMix(num_classes=200)
+                self.mixup = v2.MixUp(num_classes=200)
+                self.acc = Accuracy(task="multiclass", num_classes=200)
+            elif cfg.finetune.train.dataset == "NABirds":
+                self.classify = nn.Linear(cfg.pretrain.ground.model.embed_dim, 555)
+                self.cutmix = v2.CutMix(num_classes=555)
+                self.mixup = v2.MixUp(num_classes=555)
+                self.acc = Accuracy(task="multiclass", num_classes=555)
+            self.criterion = nn.CrossEntropyLoss(
+                label_smoothing=cfg.finetune.train.label_smoothing
+            )
+        if cfg.pretrain.train.mode == "full_metadata":
+            self.geo_encode = nn.Linear(4, cfg.pretrain.ground.model.embed_dim)
+            self.date_encode = nn.Linear(4, cfg.pretrain.ground.model.embed_dim)
 
     def forward(self, img_ground, img_overhead, geoloc=None, date=None):
         norm_ground_features, norm_overhead_features = self.forward_features(
@@ -153,7 +226,25 @@ class CVEMAEMeta(LightningModule):
                 )
         return norm_ground_features, norm_overhead_features
 
-    def shared_step(self, batch, batch_idx):
+    def forward_finetune(self, img_ground, label, geoloc=None, date=None):
+        img_ground, label = self.mixup(img_ground, label)
+        img_ground, label = self.cutmix(img_ground, label)
+        ground_embeddings, *_ = self.ground_encoder.forward_encoder(img_ground, 0)
+        if geoloc is None or date is None:
+            norm_ground_features = F.normalize(ground_embeddings[:, 0], dim=-1)
+        else:
+            if torch.rand(1) < cfg.pretrain.train.meta_dropout_prob:
+                norm_ground_features = F.normalize(ground_embeddings[:, 0], dim=-1)
+            else:
+                geo_token = self.geo_encode(geoloc)
+                date_token = self.date_encode(date)
+                norm_ground_features = F.normalize(
+                    ground_embeddings[:, 0] + geo_token + date_token, dim=-1
+                )
+        out = self.classify(norm_ground_features)
+        return out
+
+    def shared_step_pretrain(self, batch, batch_idx):
         if cfg.pretrain.train.mode == "no_metadata":
             img_ground, img_overhead = batch[0], batch[1]
             loss_clip, loss_recon = self(img_ground, img_overhead)
@@ -168,27 +259,62 @@ class CVEMAEMeta(LightningModule):
         loss = 0.3 * loss_clip + loss_recon
         return loss, loss_clip, loss_recon
 
+    def shared_step_finetune(self, batch, batch_idx):
+        if cfg.pretrain.train.mode == "no_metadata":
+            img_ground, labels = batch[0], batch[1]
+            preds = self.forward_finetune(img_ground, labels)
+        else:
+            img_ground, labels, geoloc, date = batch[0], batch[1], batch[2], batch[3]
+            preds = self.forward_finetune(img_ground, labels, geoloc, date)
+        loss = self.criterion(preds, labels)
+        acc = self.acc(preds, labels)
+        return loss, acc
+
     def training_step(self, batch, batch_idx):
-        loss, loss_clip, loss_recon = self.shared_step(batch, batch_idx)
-        self.log(
-            "train_loss_recon", loss_recon, on_epoch=True, prog_bar=True, sync_dist=True
-        )
-        self.log("train_loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
-        self.log(
-            "train_loss_clip", loss_clip, prog_bar=True, on_epoch=True, sync_dist=True
-        )
-        return {"loss": loss, "loss_clip": loss_clip, "loss_recon": loss_recon}
+        if cfg.pretrain.train.enabled:
+            loss, loss_clip, loss_recon = self.shared_step_pretrain(batch, batch_idx)
+            self.log(
+                "train_loss_recon",
+                loss_recon,
+                on_epoch=True,
+                prog_bar=True,
+                sync_dist=True,
+            )
+            self.log("train_loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
+            self.log(
+                "train_loss_clip",
+                loss_clip,
+                prog_bar=True,
+                on_epoch=True,
+                sync_dist=True,
+            )
+            return {"loss": loss, "loss_clip": loss_clip, "loss_recon": loss_recon}
+        else:
+            loss, acc = self.shared_step_finetune(batch, batch_idx)
+            self.log("train_acc", acc, on_epoch=True, prog_bar=True, sync_dist=True)
+            self.log("train_loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
+            return {"loss": loss, "acc": acc}
 
     def validation_step(self, batch, batch_idx):
-        loss, loss_clip, loss_recon = self.shared_step(batch, batch_idx)
-        self.log(
-            "val_loss_recon", loss_recon, prog_bar=True, on_epoch=True, sync_dist=True
-        )
-        self.log("val_loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
-        self.log(
-            "val_loss_clip", loss_clip, prog_bar=True, on_epoch=True, sync_dist=True
-        )
-        return {"loss": loss, "loss_clip": loss_clip, "loss_recon": loss_recon}
+        if cfg.pretrain.train.enabled:
+            loss, loss_clip, loss_recon = self.shared_step_pretrain(batch, batch_idx)
+            self.log(
+                "val_loss_recon",
+                loss_recon,
+                prog_bar=True,
+                on_epoch=True,
+                sync_dist=True,
+            )
+            self.log("val_loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
+            self.log(
+                "val_loss_clip", loss_clip, prog_bar=True, on_epoch=True, sync_dist=True
+            )
+            return {"loss": loss, "loss_clip": loss_clip, "loss_recon": loss_recon}
+        else:
+            loss, acc = self.shared_step_finetune(batch, batch_idx)
+            self.log("val_acc", acc, prog_bar=True, on_epoch=True, sync_dist=True)
+            self.log("val_loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
+            return {"loss": loss, "acc": acc}
 
     def train_dataloader(self):
         return DataLoader(
@@ -225,6 +351,7 @@ class CVEMAEMeta(LightningModule):
 class CVMMAEMeta(LightningModule):
     def __init__(self, train_dataset, val_dataset, **kwargs):
         super().__init__()
+        assert not (cfg.pretrain.train.enabled and cfg.finetune.train.enabled)
         self.model = CrossViewMaskedAutoencoder(
             img_size1=cfg.pretrain.ground.img_size,
             img_size2=cfg.pretrain.overhead.img_size,
@@ -245,9 +372,27 @@ class CVMMAEMeta(LightningModule):
         )
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
-        self.match = nn.Linear(cfg.pretrain.ground.model.embed_dim, 1)
-        self.geo_encode = nn.Linear(4, cfg.pretrain.ground.model.embed_dim)
-        self.date_encode = nn.Linear(4, cfg.pretrain.ground.model.embed_dim)
+        if cfg.finetune.train.enabled:
+            if cfg.finetune.train.dataset == "iNAT":
+                self.classify = nn.Linear(cfg.pretrain.ground.model.embed_dim, 1486)
+                self.cutmix = v2.CutMix(num_classes=1486)
+                self.mixup = v2.MixUp(num_classes=1486)
+                self.acc = Accuracy(task="multiclass", num_classes=1486)
+            elif cfg.finetune.train.dataset == "CUB":
+                self.classify = nn.Linear(cfg.pretrain.ground.model.embed_dim, 200)
+                self.cutmix = v2.CutMix(num_classes=200)
+                self.mixup = v2.MixUp(num_classes=200)
+                self.acc = Accuracy(task="multiclass", num_classes=200)
+            elif cfg.finetune.train.dataset == "NABirds":
+                self.classify = nn.Linear(cfg.pretrain.ground.model.embed_dim, 555)
+                self.cutmix = v2.CutMix(num_classes=555)
+                self.mixup = v2.MixUp(num_classes=555)
+                self.acc = Accuracy(task="multiclass", num_classes=555)
+        else:
+            self.match = nn.Linear(cfg.pretrain.ground.model.embed_dim, 1)
+        if cfg.pretrain.train.mode == "full_metadata":
+            self.geo_encode = nn.Linear(4, cfg.pretrain.ground.model.embed_dim)
+            self.date_encode = nn.Linear(4, cfg.pretrain.ground.model.embed_dim)
 
     def forward(self, img_ground, img_overhead, geoloc, date):
         img_ground_ex = torch.cat((img_ground, img_ground), dim=0)
@@ -291,9 +436,27 @@ class CVMMAEMeta(LightningModule):
                 norm_embeddings = F.normalize(
                     embeddings[:, 0] + geo_token + date_token, dim=-1
                 )
-        return norm_embeddings
+        return norm_embeddings, self.match(norm_embeddings)
 
-    def shared_step(self, batch, batch_idx):
+    def forward_finetune(self, img_ground, img_overhead, label, geoloc=None, date=None):
+        img_ground, label = self.mixup(img_ground, label)
+        img_ground, label = self.cutmix(img_ground, label)
+        embeddings, *_ = self.model.forward_encoder(img_ground, img_overhead, 0)
+        if cfg.pretrain.train.mode == "no_metadata":
+            norm_embeddings = F.normalize(embeddings[:, 0], dim=-1)
+        else:
+            if torch.rand(1) < cfg.pretrain.train.meta_dropout_prob:
+                norm_embeddings = F.normalize(embeddings[:, 0], dim=-1)
+            else:
+                geo_token = self.geo_encode(geoloc)
+                date_token = self.date_encode(date)
+                norm_embeddings = F.normalize(
+                    embeddings[:, 0] + geo_token + date_token, dim=-1
+                )
+        out = self.classify(norm_embeddings)
+        return out
+
+    def shared_step_pretrain(self, batch, batch_idx):
         if cfg.pretrain.train.mode == "no_metadata":
             img_ground, img_overhead = batch[0], batch[1]
             loss_matching, loss_recon = self(img_ground, img_overhead)
@@ -308,27 +471,70 @@ class CVMMAEMeta(LightningModule):
         loss = loss_matching + loss_recon
         return loss, loss_matching, loss_recon
 
+    def shared_step_finetune(self, batch, batch_idx):
+        if cfg.pretrain.train.mode == "no_metadata":
+            img_ground, img_overhead, labels = batch[0], batch[1], batch[2]
+            preds = self.forward_finetune(img_ground, img_overhead, labels)
+        else:
+            img_ground, img_overhead, labels, geoloc, date = (
+                batch[0],
+                batch[1],
+                batch[2],
+                batch[3],
+                batch[4],
+            )
+            preds = self.forward_finetune(
+                img_ground, img_overhead, labels, geoloc, date
+            )
+        loss = self.criterion(preds, labels)
+        acc = self.acc(preds, labels)
+        return loss, acc
+
     def training_step(self, batch, batch_idx):
-        loss, loss_clip, loss_recon = self.shared_step(batch, batch_idx)
-        self.log(
-            "train_loss_recon", loss_recon, on_epoch=True, prog_bar=True, sync_dist=True
-        )
-        self.log("train_loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
-        self.log(
-            "train_loss_clip", loss_clip, prog_bar=True, on_epoch=True, sync_dist=True
-        )
-        return {"loss": loss, "loss_clip": loss_clip, "loss_recon": loss_recon}
+        if cfg.pretrain.train.enabled:
+            loss, loss_clip, loss_recon = self.shared_step_pretrain(batch, batch_idx)
+            self.log(
+                "train_loss_recon",
+                loss_recon,
+                on_epoch=True,
+                prog_bar=True,
+                sync_dist=True,
+            )
+            self.log("train_loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
+            self.log(
+                "train_loss_clip",
+                loss_clip,
+                prog_bar=True,
+                on_epoch=True,
+                sync_dist=True,
+            )
+            return {"loss": loss, "loss_clip": loss_clip, "loss_recon": loss_recon}
+        else:
+            loss, acc = self.shared_step_finetune(batch, batch_idx)
+            self.log("train_acc", acc, on_epoch=True, prog_bar=True, sync_dist=True)
+            self.log("train_loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
+            return {"loss": loss, "acc": acc}
 
     def validation_step(self, batch, batch_idx):
-        loss, loss_clip, loss_recon = self.shared_step(batch, batch_idx)
-        self.log(
-            "val_loss_recon", loss_recon, prog_bar=True, on_epoch=True, sync_dist=True
-        )
-        self.log("val_loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
-        self.log(
-            "val_loss_clip", loss_clip, prog_bar=True, on_epoch=True, sync_dist=True
-        )
-        return {"loss": loss, "loss_clip": loss_clip, "loss_recon": loss_recon}
+        if cfg.pretrain.train.enabled:
+            loss, loss_clip, loss_recon = self.shared_step_pretrain(batch, batch_idx)
+            self.log(
+                "val_loss_recon",
+                loss_recon,
+                prog_bar=True,
+                on_epoch=True,
+                sync_dist=True,
+            )
+            self.log("val_loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
+            self.log(
+                "val_loss_clip", loss_clip, prog_bar=True, on_epoch=True, sync_dist=True
+            )
+            return {"loss": loss, "loss_clip": loss_clip, "loss_recon": loss_recon}
+        else:
+            loss, acc = self.shared_step_finetune(batch, batch_idx)
+            self.log("val_acc", acc, prog_bar=True, on_epoch=True, sync_dist=True)
+            self.log("val_loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
+            return {"loss": loss, "acc": acc}
 
     def train_dataloader(self):
         return DataLoader(
