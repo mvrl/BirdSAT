@@ -78,8 +78,13 @@ Download pretrained models from the given links below:
 ```bibtex
 @inproceedings{sastry2024birdsat,
   title={BirdSAT: Cross-View Contrastive Masked Autoencoders for Bird Species Classification and Mapping},
-  author={Srikumar, Sastry and Subash, Khanal and Huang, Di and Aayush, Dhakal and Nathan, Jacobs},
+  author={Srikumar, Sastry and Subash, Khanal and Aayush, Dhakal and Huang, Di and Nathan, Jacobs},
   booktitle={Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision},
   year={2024}
 }
 ```
+
+## 🔍 Additional Links
+Check out our lab website for other interesting works on geospatial understanding and mapping;
+* Multi-Modal Vision Research Lab (MVRL) - [Link](https://mvrl.cse.wustl.edu/)
+* Related Works from MVRL - [Link](https://mvrl.cse.wustl.edu/publications/)

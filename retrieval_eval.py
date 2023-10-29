@@ -38,7 +38,7 @@ def retrieval_eval():
         model_filter.eval()
         model_filter = model_filter.cuda()
         model = CVEMAEMeta.load_from_checkpoint(
-            cfg.retrieval.cve_ckpt,
+            cfg.retrieval.ckpt,
             train_dataset=None,
             val_dataset=test_dataset,
         )
