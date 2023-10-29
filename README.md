@@ -1,5 +1,7 @@
 # BirdSAT: Cross-View Contrastive Masked Autoencoders for Bird Species Classification and Mapping
 
+#### [Srikumar Sastry](https://sites.wustl.edu/srikumarsastry/), [Subash Khanal](https://subash-khanal.github.io/), [Aayush Dhakal](https://scholar.google.com/citations?hl=en&user=KawjT_8AAAAJ), [Di Huang](https://scholar.google.com/citations?hl=en&user=Uj-PQXkAAAAJ), [Nathan Jaocbs](https://jacobsn.github.io/)
+
 ## 🦢 Dataset Released: Cross-View iNAT Birds 2021
 This cross-view birds species dataset consists of paired ground-level bird images and satellite images, along with meta-information associated with the iNaturalist-2021 dataset.
 
