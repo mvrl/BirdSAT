@@ -646,7 +646,7 @@ class CVMMAEMeta(LightningModule):
             img_size1=cfg.pretrain.ground.img_size,
             img_size2=cfg.pretrain.overhead.img_size,
             patch_size1=cfg.pretrain.ground.model.patch_size,
-            patch_size2=cfg.pretrain.overhead.patch_size,
+            patch_size2=cfg.pretrain.overhead.model.patch_size,
             in_chans=cfg.pretrain.ground.model.in_chans,
             embed_dim=cfg.pretrain.ground.model.embed_dim,
             depth=cfg.pretrain.ground.model.depth,

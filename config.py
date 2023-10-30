@@ -24,6 +24,8 @@ cfg.pretrain.ground.model.mlp_ratio = 4.0
 cfg.pretrain.overhead = edict()
 cfg.pretrain.overhead.img_size = (224, 224)
 cfg.pretrain.overhead.hori_flip_prob = 0.5
+cfg.pretrain.overhead.model = edict()
+cfg.pretrain.overhead.model.patch_size = 16
 
 
 cfg.pretrain.train = edict()

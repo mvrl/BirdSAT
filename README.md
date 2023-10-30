@@ -35,9 +35,9 @@ git clone https://github.com/ViTAE-Transformer/Remote-Sensing-RVSA.git
 ```
 3. **Append** the code for CVMMAE present in `utils_model/CVMMAE.py` to the file present in `Remote-Sensing-RVSA/MAEPretrain_SceneClassification/models_mae_vitae.py`
 
-4. Download pretrained satellite image encoder from - [Link](https://1drv.ms/u/s!AimBgYV7JjTlgUIde2jzcjrrWasP?e=gyLn29) and place inside folder `pretrained_models`.
+4. Download pretrained satellite image encoder from - [Link](https://1drv.ms/u/s!AimBgYV7JjTlgUIde2jzcjrrWasP?e=gyLn29) and place inside folder `pretrained_models`. You might get an error while loading this model. You need to set the option `kernel=3` in the file `Remote-Sensing-RVSA/MAEPretrain_SceneClassification/models_mae_vitae.py` in the class `MaskedAutoencoderViTAE`.
 
-5. Download all datasets and place inside folder `data`.
+5. Download all datasets, unzip them and place inside folder `data`.
 
 #### Installing Required Packages
 There are two options to setup your environment to be able to run all the functions in the repository:
