@@ -1,7 +1,6 @@
 einops
-scikit-learn
-scikit-image
 torch
+timm
 pytorch_lightning
 torchvision
 pandas
