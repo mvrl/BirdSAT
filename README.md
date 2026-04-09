@@ -69,10 +69,10 @@ Download pretrained models from the given links below:
 
 |Model Type|Download Url|
 |----------|--------|
-|CVE-MAE|[Link](https://wustl.box.com/s/o1ooaunhaym7v1qj3yzj3vof0lskxyha)|
-|CVE-MAE-Meta| [Link](https://wustl.box.com/s/fudo44eznjwejcp3vql14by20rqqayfy)|
-|CVM-MAE| [Link](https://wustl.box.com/s/xuezslrnjxyz1d1ngtzvnm5ck2il4nx8)|
-|CVM-MAE-Meta| [Link](https://wustl.box.com/s/c3nfbdmcigiogqskemyc4h5soveiya8n)|
+|CVE-MAE|[Link](https://wustl.box.com/shared/static/gtns8ldf0l798ure3gq2tauhpb4wlety.ckpt)|
+|CVE-MAE-Meta| [Link](https://wustl.box.com/shared/static/jmmgp9afhl7slhk8vz5k77yd5facablp)|
+|CVM-MAE| [Link](https://wustl.box.com/shared/static/b5po1om4purkh65xltovkli9cwtt2p3z.ckpt)|
+|CVM-MAE-Meta| [Link](https://wustl.box.com/shared/static/ckq87d7czlxjxab1m3cfkws2kk8zg3bc.ckpt)|
 
 
 ## 📑 Citation
